@@ -1,6 +1,6 @@
 ---
 name: esyurl-qr-codes
-description: "Generate QR codes with esyURL (https://esyurl.fyi): trackable QR codes that can be edited after printing, styled QR codes with dots, rounded corners, brand colours, a logo in the middle or a photo behind, as PNG or SVG, plus static QR codes for any text. Use when the user wants a QR code for a menu, flyer, poster, packaging, business card, event or Wi-Fi, wants to add a logo to a QR code, or needs a printed QR code to point somewhere new. The agent can sign itself up; no human account is needed."
+description: "Generate QR codes with esyURL (https://esyurl.fyi): trackable QR codes that can be edited after printing, styled QR codes with dots, rounded corners, brand colours, a logo in the middle or a photo behind, as PNG or SVG, static QR codes for any text, one QR code for both the App Store and Google Play, and scan counts. Use when the user wants a QR code for a menu, flyer, poster, packaging, business card, event, app download or Wi-Fi, wants to add a logo to a QR code, needs a printed QR code to point somewhere new, or wants to know how many people scanned it. The agent can sign itself up; no human account is needed."
 ---
 
 # QR codes with esyURL
@@ -104,10 +104,33 @@ curl -s https://esyurl.fyi/v1/render -H "Authorization: Bearer $KEY" -H 'content
 `PAYMENT-SIGNATURE`). **Only pay with the user's explicit approval.** With a
 key, everything above is free, so prefer signing up.
 
-## Related
+## One code for both app stores
 
-Different destinations per phone OS from one code (App Store / Google Play):
-the `esyurl-redirect-rules` skill. Scan counts: `esyurl-link-analytics`.
+Add redirect rules to the link; the printed code stays the same:
+
+```sh
+curl -s -X PATCH https://esyurl.fyi/v1/links/$ID -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{
+  "targetUrl": "https://example.com/app",
+  "rules": [
+    {"name": "iOS", "when": {"field": "os", "op": "eq", "value": "ios"}, "targetUrl": "https://apps.apple.com/app/id123456789"},
+    {"name": "Android", "when": {"field": "os", "op": "eq", "value": "android"}, "targetUrl": "https://play.google.com/store/apps/details?id=com.example.app"}]}'
+```
+
+Rules can also match country, language, device or time; syntax in
+https://esyurl.fyi/llms.txt under "Redirect rules" (or the
+`esyurl-short-links` skill).
+
+## Scan counts
+
+`GET /v1/links/{id}/visits?days=30` (MCP `get_short_link_visits`):
+`totals.qr` is scans, `totals.direct` clicks, `totals.bot` link previews;
+`daily` per UTC day. Only codes rendered by esyURL are counted.
+
+## Changing a printed code
+
+`PATCH /v1/links/{id}` `{"targetUrl": "https://new.example.com"}`: every
+printed copy now goes there. Restyling (`qrStyle`) changes the image, so
+reprint for that.
 
 ## Reference
 

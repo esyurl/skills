@@ -1,6 +1,6 @@
 ---
 name: esyurl-short-links
-description: "Shorten URLs and manage short links with esyURL (https://esyurl.fyi): create a short link with a custom slug, change where a link already shared points, pause or delete links, tag them and group them into campaigns. Use when the user wants to shorten a URL, make a short or branded link, fix a link that was already printed or sent, or organise links. The agent can sign itself up; no human account is needed."
+description: "Shorten URLs and manage short links with esyURL (https://esyurl.fyi): custom slugs, change where a link already shared points, smart redirects (iPhone to the App Store and Android to Google Play, or by country, language, device or time), click and QR scan analytics, campaign groups, and short links on your own branded domain. Use when the user wants to shorten a URL, make a short, branded or app download link, fix a link already printed or sent, route visitors by device or country, or see how many people clicked. The agent can sign itself up; no human account is needed."
 ---
 
 # Short links with esyURL
@@ -82,17 +82,155 @@ moves.
 
 `POST /v1/groups` `{"name": "Spring campaign", "color"?: "#3b82f6"}`, then
 `POST /v1/groups/{id}/links` `{"linkIds": [...]}` (up to 25, idempotent), or
-pass `groupIds` when creating links. `GET /v1/groups/{id}/visits?days=30`
-sums visits over the group. MCP: `create_group`, `add_links_to_group`,
+pass `groupIds` when creating links. MCP: `create_group`,
+`add_links_to_group`.
+
+## Redirect rules
+
+One link can send different visitors to different places: iPhones to the
+App Store and Android to Google Play, each country to its own page, a page
+that switches on launch day.
+
+### How rules work
+
+`rules` on a link is an ordered list. On each visit the first enabled rule
+whose `when` matches picks `targetUrl`; if none matches, the link's own
+`targetUrl` is the fallback. Rule: `{"id"?, "name"?, "enabled"?: true, "when": <condition>, "targetUrl"}`.
+`PATCH` replaces the whole list (`[]` removes all); keep rule `id`s when
+editing, since per-rule stats are keyed by them.
+
+### App-store split
+
+```sh
+curl -s -X PATCH https://esyurl.fyi/v1/links/$ID -H "Authorization: Bearer $KEY" -H 'content-type: application/json' -d '{
+  "targetUrl": "https://example.com/app",
+  "rules": [
+    {"name": "iOS", "when": {"field": "os", "op": "eq", "value": "ios"},
+     "targetUrl": "https://apps.apple.com/app/id123456789"},
+    {"name": "Android", "when": {"field": "os", "op": "eq", "value": "android"},
+     "targetUrl": "https://play.google.com/store/apps/details?id=com.example.app"}]}'
+```
+
+`rules` can also be sent when creating the link (`POST /v1/links`). MCP:
+`create_short_link` / `update_short_link`.
+
+### Conditions
+
+`{"field", "op", "value"}`, or combine with `{"all": [...]}`,
+`{"any": [...]}`, `{"not": {...}}`.
+
+| field | values | ops |
+| --- | --- | --- |
+| `os` | ios android windows macos linux chromeos other | eq neq in not_in |
+| `device` | mobile tablet desktop bot | eq neq in not_in |
+| `browser` | safari chrome firefox edge samsung opera in_app other | eq neq in not_in |
+| `source` | qr direct bot | eq neq in not_in |
+| `language` | primary tag; `pt` matches `pt-BR` | eq neq in not_in exists |
+| `country` | ISO 3166-1 alpha-2, e.g. `GB` | eq neq in not_in |
+| `referrer` | host, e.g. `l.instagram.com` | eq neq in not_in contains starts_with ends_with exists |
+| `query` | a query parameter; needs `"key"` | eq neq in not_in contains starts_with ends_with exists |
+| `time` | ISO 8601 | before after |
+| `weekday` | sun..sat (UTC) | eq neq in not_in |
+| `hour` | 0–23 (UTC) | eq neq in not_in gte lte |
+
+`in`/`not_in` take arrays. A missing value (no referrer, unknown country)
+fails `eq`/`in` and passes `neq`/`not_in`. iPads on Safari report as macOS
+desktop. Up to 20 rules, 20 conditions each, nested 4 deep.
+
+More examples:
+- `{"field": "country", "op": "in", "value": ["BR", "PT"]}`
+- `{"all": [{"field": "language", "op": "eq", "value": "pt"}, {"field": "device", "op": "eq", "value": "mobile"}]}`
+- `{"field": "time", "op": "after", "value": "2026-12-01T00:00:00Z"}` (launch-day switch)
+- `{"field": "browser", "op": "eq", "value": "in_app"}` (Instagram/TikTok in-app browsers)
+
+### Test before sharing
+
+```sh
+curl -s https://esyurl.fyi/v1/links/$ID/resolve -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", "country": "GB", "source": "qr"}'
+```
+
+Returns the `targetUrl` and `matchedRule`; records nothing. MCP:
+`test_redirect_rules`. Check each branch plus the fallback.
+
+Visits per rule: `byRule` in the link's visits (below).
+
+## Visits (clicks and QR scans)
+
+Every visit is counted by source: QR scans, direct clicks, and bots
+(link-preview fetchers like Slackbot or WhatsApp, kept out of human counts).
+
+```sh
+curl -s "https://esyurl.fyi/v1/links/$ID/visits?days=30&recent=50" -H "Authorization: Bearer $KEY"
+```
+
+MCP: `get_short_link_visits`. The response has:
+
+- `totals`: `{visits, qr, direct, bot}`. `visits` is humans only (qr + direct).
+- `daily`: one row per UTC day.
+- `recent`: the latest visit events, newest first.
+- `byRule`: visits each redirect rule decided, and `fallback` for the rest.
+
+Find a link's `linkId` with `GET /v1/links` (MCP `list_short_links`); each link
+also carries `visitCount` and `lastVisitedAt`.
+
+### Visits for a group
+
+`GET /v1/groups/{id}/visits?days=30` sums the group's current links. MCP:
 `get_group_visits`.
 
-## Related
+### Reading the numbers
 
-QR codes for these links: the `esyurl-qr-codes` skill. Different destinations
-per device or country: `esyurl-redirect-rules`. Click and scan stats:
-`esyurl-link-analytics`. Your own domain: `esyurl-custom-domains`.
+- QR scans are counted only for codes rendered by esyURL (they encode
+  `?s=qr`). A QR code of the raw destination URL can't be counted.
+- HEAD requests aren't visits. `curl` and HTTP libraries count as direct.
+- Individual events are kept 90 days; daily counts forever.
+- When summarising, give totals, the QR vs direct split, the busiest days and
+  the trend; mention bots separately.
+
+## Custom domain
+
+An account's short links can live on its own domain, such as
+`go.acme.com/spring`. Once active, short URLs and QR codes use it; the
+`esyurl.fyi` addresses keep working.
+
+### Cost: ask first
+
+For a self-signed-up account, setting up a domain costs **5.00 USDC on Base,
+once per domain**, paid with x402. Reading, re-setting the same domain and
+removing it are free; switching to another domain is a new payment.
+Accounts whose key came from esyURL directly don't pay.
+
+**Tell the user the price and get explicit approval before paying.** If they
+have no x402 wallet, stop and explain.
+
+### Set it up
+
+1. `PUT /v1/domain` `{"domain": "go.acme.com"}` (MCP `set_custom_domain`).
+   One domain per account. Invalid or taken domains fail with 400/409 before
+   any charge. Otherwise the answer is 402 with the payment requirements
+   (body and `PAYMENT-REQUIRED` header).
+2. With approval, sign the payment with an x402 client and repeat the PUT
+   with the base64 payload in the `PAYMENT-SIGNATURE` header. MCP: pass it in
+   `params._meta["x402/payment"]`, or the `payment` argument. 200 means set
+   up; 402 again means settlement failed and nothing was set up.
+3. `GET /v1/domain` (MCP `get_custom_domain`) returns the status and the exact
+   DNS records to create. **Each call advances provisioning**, so call it
+   again after DNS changes.
+
+Status goes `pending_validation` (create the validation CNAME) →
+`provisioning` → `pending_dns` (CNAME the domain to the given target) →
+`active`. Give the user the records exactly as returned; DNS can take minutes
+to hours.
+
+Remove with `DELETE /v1/domain` (MCP `remove_custom_domain`).
+
+Payment details: https://esyurl.fyi/llms.txt, "Pricing".
+
+## Limits
 
 Self-signed-up accounts hold up to 100 links (403 `quota_exceeded` beyond).
+QR codes for these links: the `esyurl-qr-codes` skill.
 
 ## Reference
 

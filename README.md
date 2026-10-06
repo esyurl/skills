@@ -9,7 +9,7 @@ needed.
 ## Install
 
 ```sh
-npx skills add esyurl/skills                          # all of them
+npx skills add esyurl/skills                          # both
 npx skills add esyurl/skills --skill esyurl-qr-codes  # just one
 ```
 
@@ -20,12 +20,8 @@ Works with Claude Code, Cursor, Codex and the other agents
 
 | Skill | What it does |
 | --- | --- |
-| [esyurl](skills/esyurl/SKILL.md) | Everything below in one skill |
-| [esyurl-short-links](skills/esyurl-short-links/SKILL.md) | Shorten URLs, custom slugs, change where a shared link points, groups |
-| [esyurl-qr-codes](skills/esyurl-qr-codes/SKILL.md) | Trackable, editable QR codes; styled with dots, colours, a logo or a photo; PNG or SVG |
-| [esyurl-redirect-rules](skills/esyurl-redirect-rules/SKILL.md) | One link or QR code for the App Store and Google Play; route by country, language, device or time |
-| [esyurl-link-analytics](skills/esyurl-link-analytics/SKILL.md) | Clicks and QR scans per link or campaign, bots kept apart |
-| [esyurl-custom-domains](skills/esyurl-custom-domains/SKILL.md) | Short links on your own domain (go.yourcompany.com) |
+| [esyurl-short-links](skills/esyurl-short-links/SKILL.md) | Shorten URLs, custom slugs, change where a shared link points; App Store / Google Play and country, language or device routing; click and scan stats; your own domain |
+| [esyurl-qr-codes](skills/esyurl-qr-codes/SKILL.md) | Trackable, editable QR codes; styled with dots, colours, a logo or a photo; PNG or SVG; one code for both app stores; scan counts |
 
 ## Without a skill
 
